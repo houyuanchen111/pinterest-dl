@@ -168,20 +168,35 @@ class ApiScraper:
         Returns:
             List[PinterestMedia]: List of scraped PinterestMedia objects related to the given pin URL.
         """
-        api = self._create_api(url)
-        if not api.is_pin:
-            raise ValueError("related only supports Pinterest pin URLs")
-        source = self._pump(
-            lambda size, bm: self._get_images(
-                api, size, bm, min_resolution, caption_from_title=caption_from_title
-            ),
-            delay,
+        source = self.iter_related(
+            url,
+            min_resolution=min_resolution,
+            delay=delay,
+            caption_from_title=caption_from_title,
         )
         medias = self._collect(source, num, on_progress)
         if self.verbose:
             self._display_images(medias)
         logger.info(f"Successfully scraped {len(medias)} related media items from {url}")
         return medias
+
+    def iter_related(
+        self,
+        url: str,
+        min_resolution: Tuple[int, int] = (0, 0),
+        delay: float = 0.2,
+        caption_from_title: bool = False,
+    ) -> Iterator[PinterestMedia]:
+        """Lazily yield related pins from a Pinterest pin URL."""
+        api = self._create_api(url)
+        if not api.is_pin:
+            raise ValueError("related only supports Pinterest pin URLs")
+        yield from self._pump(
+            lambda size, bm: self._get_images(
+                api, size, bm, min_resolution, caption_from_title=caption_from_title
+            ),
+            delay,
+        )
 
     def search(
         self,
@@ -429,6 +444,7 @@ class ApiScraper:
         bookmarks = bookmarks or BookmarkManager(3)
         seen: set[str] = set()
         while True:
+            previous_bookmarks = tuple(bookmarks.get())
             try:
                 batch, bookmarks = fetch_batch(
                     50, bookmarks
@@ -439,6 +455,12 @@ class ApiScraper:
             except Exception as e:
                 logger.error(f"Unexpected error while scraping: {e}", exc_info=self.verbose)
                 raise
+
+            if not batch and tuple(bookmarks.get()) == previous_bookmarks:
+                logger.warning(
+                    "Scraping interrupted: empty batch without pagination progress."
+                )
+                return
 
             for media in batch:
                 if media.src not in seen:

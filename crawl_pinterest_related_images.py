@@ -9,11 +9,13 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from tqdm import tqdm
 
@@ -311,72 +313,29 @@ def download_one(media_storage: object, downloader: object, item: object, output
     return item
 
 
-def download_missing(
-    items: list[object],
-    output_dir: Path,
-    workers: int,
-    timeout: float,
-) -> list[object]:
-    if not items:
-        return []
-
-    from pinterest_dl.download import USER_AGENT
-    from pinterest_dl.download.downloader import MediaDownloader
-    from pinterest_dl.storage import media as media_storage
-
-    downloader = MediaDownloader(
-        user_agent=USER_AGENT,
-        timeout=timeout,
-        max_retries=3,
-    )
-
-    results: list[object | None] = [None] * len(items)
-    failures: list[tuple[object, Exception]] = []
-
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {
-            executor.submit(download_one, media_storage, downloader, item, output_dir): index
-            for index, item in enumerate(items)
-        }
-        with tqdm(total=len(futures), desc="Downloading Media") as pbar:
-            for future in as_completed(futures):
-                index = futures[future]
-                item = items[index]
-                try:
-                    results[index] = future.result()
-                except Exception as exc:
-                    failures.append((item, exc))
-                finally:
-                    pbar.update(1)
-
-    if failures:
-        print(f"Skipped {len(failures)} failed item(s).")
-        for item, exc in failures:
-            pin_uid = getattr(item, "id", "unknown")
-            print(f"  - pin {pin_uid}: {exc}")
-
-    return [item for item in results if item is not None]
-
-
-def scrape_items(args: argparse.Namespace, source_type: str, keyword: str, search_pin_uid: str) -> list[object]:
+def iter_scraped_items(
+    args: argparse.Namespace,
+    source_type: str,
+    keyword: str,
+    search_pin_uid: str,
+) -> Iterator[object]:
     from pinterest_dl import PinterestDL
 
     scraper = PinterestDL.with_api(verbose=args.verbose).with_cookies_path(args.cookies)
 
     if source_type == "keyword":
-        print(f'Searching keyword: "{keyword}"')
-        return scraper.search(
+        print(f'Searching keyword: "{keyword}"', flush=True)
+        yield from scraper.iter_search(
             keyword,
-            args.num,
             min_resolution=args.resolution,
             delay=args.delay,
             bookmarksCount=args.bookmark_count,
         )
+        return
 
-    print(f"Searching related pins for pin_uid: {search_pin_uid}")
-    return scraper.related(
+    print(f"Searching related pins for pin_uid: {search_pin_uid}", flush=True)
+    yield from scraper.iter_related(
         pin_url(search_pin_uid),
-        args.num,
         min_resolution=args.resolution,
         delay=args.delay,
     )
@@ -406,110 +365,205 @@ def main() -> None:
     records = load_records(args.json_path)
     records_by_pin_uid, existing_source_keys = build_indexes(records)
 
-    scraped_items = scrape_items(args, source_type, keyword, search_pin_uid)
-    items_to_download: list[object] = []
-    queued_pin_uids: set[str] = set()
-    skipped_same_source = 0
-    reused_existing = 0
+    from pinterest_dl.download import USER_AGENT
+    from pinterest_dl.download.downloader import MediaDownloader
+    from pinterest_dl.storage import media as media_storage
 
-    for item in scraped_items:
-        pin_uid = str(getattr(item, "id", ""))
-        if not pin_uid:
-            continue
+    downloader = MediaDownloader(
+        user_agent=USER_AGENT,
+        timeout=args.download_timeout,
+        max_retries=3,
+    )
 
-        source_key = (pin_uid, keyword, search_pin_uid)
-        if source_key in existing_source_keys:
-            update_records_for_pin(
-                records,
-                pin_uid,
-                resolution=getattr(item, "resolution", None),
-                like_count=media_like_count(item),
-            )
-            skipped_same_source += 1
-            continue
+    state_lock = threading.Lock()
+    download_slots = threading.BoundedSemaphore(args.workers)
+    pending_source_keys: set[tuple[str, str, str]] = set()
+    stats = {
+        "scraped": 0,
+        "downloaded_new": 0,
+        "reused_existing": 0,
+        "skipped_same_source": 0,
+        "failed_downloads": 0,
+        "skipped_without_pin_uid": 0,
+    }
+    scrape_error: Exception | None = None
 
-        existing_record = records_by_pin_uid.get(pin_uid)
-        existing_path = existing_record_path(existing_record)
-        if existing_path is None:
-            existing_path = find_existing_file(args.output, pin_uid)
+    def finish_download(
+        future: object,
+        item: object,
+        source_key: tuple[str, str, str],
+        pbar: tqdm,
+    ) -> None:
+        pin_uid = source_key[0]
+        try:
+            downloaded_item = future.result()
+            local_path = getattr(downloaded_item, "local_path", None)
+            if local_path is None:
+                raise RuntimeError("download finished without a local path")
 
-        if existing_path is not None:
-            item.set_local_path(existing_path)
-            resolution = (
-                existing_record.get("resolution")
-                if existing_record is not None
-                else getattr(item, "resolution", None)
-            )
-            like_count = media_like_count(item)
-            if like_count is None and existing_record is not None:
-                like_count = normalize_like_count(existing_record.get("like_count"))
-            update_records_for_pin(
-                records,
-                pin_uid,
-                image_path=existing_path,
-                resolution=resolution,
-                like_count=like_count,
-            )
+            image_path = Path(local_path).resolve()
+            like_count = media_like_count(downloaded_item)
             new_record = make_record(
-                existing_path,
+                image_path,
                 pin_uid,
                 keyword,
                 search_pin_uid,
-                resolution,
+                getattr(downloaded_item, "resolution", None),
                 like_count,
             )
-            records.append(new_record)
-            records_by_pin_uid.setdefault(pin_uid, new_record)
-            existing_source_keys.add(source_key)
-            reused_existing += 1
-            continue
 
-        if pin_uid not in queued_pin_uids:
-            items_to_download.append(item)
-            queued_pin_uids.add(pin_uid)
+            with state_lock:
+                update_records_for_pin(
+                    records,
+                    pin_uid,
+                    image_path=image_path,
+                    resolution=getattr(downloaded_item, "resolution", None),
+                    like_count=like_count,
+                )
+                records.append(new_record)
+                records_by_pin_uid[pin_uid] = new_record
+                existing_source_keys.add(source_key)
+                pending_source_keys.discard(source_key)
+                stats["downloaded_new"] += 1
+                write_records(records, args.json_path)
+        except Exception as exc:
+            with state_lock:
+                pending_source_keys.discard(source_key)
+                stats["failed_downloads"] += 1
+            print(f"Skipped failed item pin {pin_uid}: {exc}", flush=True)
+        finally:
+            download_slots.release()
+            pbar.update(1)
 
-    downloaded_items = download_missing(
-        items_to_download,
-        args.output,
-        args.workers,
-        args.download_timeout,
+    with tqdm(total=args.num, desc="Processing Media") as pbar:
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            try:
+                scraped_source = iter_scraped_items(args, source_type, keyword, search_pin_uid)
+                for item in itertools.islice(scraped_source, args.num):
+                    with state_lock:
+                        stats["scraped"] += 1
+
+                    pin_uid = str(getattr(item, "id", ""))
+                    if not pin_uid:
+                        with state_lock:
+                            stats["skipped_without_pin_uid"] += 1
+                        pbar.update(1)
+                        continue
+
+                    source_key = (pin_uid, keyword, search_pin_uid)
+                    should_download = False
+
+                    with state_lock:
+                        if source_key in existing_source_keys:
+                            update_records_for_pin(
+                                records,
+                                pin_uid,
+                                resolution=getattr(item, "resolution", None),
+                                like_count=media_like_count(item),
+                            )
+                            stats["skipped_same_source"] += 1
+                            write_records(records, args.json_path)
+                            pbar.update(1)
+                            continue
+
+                        if source_key in pending_source_keys:
+                            stats["skipped_same_source"] += 1
+                            pbar.update(1)
+                            continue
+
+                        existing_record = records_by_pin_uid.get(pin_uid)
+                        existing_path = existing_record_path(existing_record)
+                        if existing_path is None:
+                            existing_path = find_existing_file(args.output, pin_uid)
+
+                        if existing_path is not None:
+                            item.set_local_path(existing_path)
+                            resolution = (
+                                existing_record.get("resolution")
+                                if existing_record is not None
+                                else getattr(item, "resolution", None)
+                            )
+                            like_count = media_like_count(item)
+                            if like_count is None and existing_record is not None:
+                                like_count = normalize_like_count(existing_record.get("like_count"))
+                            update_records_for_pin(
+                                records,
+                                pin_uid,
+                                image_path=existing_path,
+                                resolution=resolution,
+                                like_count=like_count,
+                            )
+                            new_record = make_record(
+                                existing_path,
+                                pin_uid,
+                                keyword,
+                                search_pin_uid,
+                                resolution,
+                                like_count,
+                            )
+                            records.append(new_record)
+                            records_by_pin_uid.setdefault(pin_uid, new_record)
+                            existing_source_keys.add(source_key)
+                            stats["reused_existing"] += 1
+                            write_records(records, args.json_path)
+                            pbar.update(1)
+                            continue
+
+                        should_download = True
+
+                    if should_download:
+                        download_slots.acquire()
+                        with state_lock:
+                            pending_source_keys.add(source_key)
+                        try:
+                            future = executor.submit(
+                                download_one,
+                                media_storage,
+                                downloader,
+                                item,
+                                args.output,
+                            )
+                        except Exception:
+                            with state_lock:
+                                pending_source_keys.discard(source_key)
+                            download_slots.release()
+                            raise
+                        future.add_done_callback(
+                            lambda done_future, item=item, source_key=source_key: finish_download(
+                                done_future,
+                                item,
+                                source_key,
+                                pbar,
+                            )
+                        )
+            except Exception as exc:
+                scrape_error = exc
+                print(f"Scraping stopped with error: {exc}", flush=True)
+
+    with state_lock:
+        final_stats = dict(stats)
+        pending_count = len(pending_source_keys)
+
+    print(f"Done. Scraped: {final_stats['scraped']}", flush=True)
+    print(f"Downloaded new images: {final_stats['downloaded_new']}", flush=True)
+    print(
+        f"Reused existing images and appended source records: {final_stats['reused_existing']}",
+        flush=True,
     )
+    print(
+        f"Skipped existing records for same source: {final_stats['skipped_same_source']}",
+        flush=True,
+    )
+    print(f"Failed downloads: {final_stats['failed_downloads']}", flush=True)
+    if final_stats["skipped_without_pin_uid"]:
+        print(f"Skipped items without pin_uid: {final_stats['skipped_without_pin_uid']}", flush=True)
+    if pending_count:
+        print(f"Pending records not saved: {pending_count}", flush=True)
+    print(f"Metadata JSON: {args.json_path}", flush=True)
+    print(f"Image directory: {args.output}", flush=True)
 
-    for item in downloaded_items:
-        pin_uid = str(getattr(item, "id", ""))
-        local_path = getattr(item, "local_path", None)
-        if not pin_uid or local_path is None:
-            continue
-
-        image_path = Path(local_path).resolve()
-        like_count = media_like_count(item)
-        update_records_for_pin(
-            records,
-            pin_uid,
-            image_path=image_path,
-            resolution=getattr(item, "resolution", None),
-            like_count=like_count,
-        )
-        new_record = make_record(
-            image_path,
-            pin_uid,
-            keyword,
-            search_pin_uid,
-            getattr(item, "resolution", None),
-            like_count,
-        )
-        records.append(new_record)
-        records_by_pin_uid[pin_uid] = new_record
-        existing_source_keys.add((pin_uid, keyword, search_pin_uid))
-
-    write_records(records, args.json_path)
-
-    print(f"Done. Scraped: {len(scraped_items)}")
-    print(f"Downloaded new images: {len(downloaded_items)}")
-    print(f"Reused existing images and appended source records: {reused_existing}")
-    print(f"Skipped existing records for same source: {skipped_same_source}")
-    print(f"Metadata JSON: {args.json_path}")
-    print(f"Image directory: {args.output}")
+    if scrape_error is not None:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
