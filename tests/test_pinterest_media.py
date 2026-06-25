@@ -53,7 +53,25 @@ class TestPinterestMedia:
         assert result["origin"] == "https://www.pinterest.com/pin/123456789/"
         assert result["resolution"]["x"] == 1920
         assert result["resolution"]["y"] == 1080
+        assert result["like_count"] is None
         assert "media_stream" not in result
+
+    def test_to_dict_with_like_count(self):
+        """Test converting media with like count to dict."""
+        media = PinterestMedia(
+            id=123,
+            src="https://example.com/image.jpg",
+            alt="desc",
+            origin="https://www.pinterest.com/pin/123/",
+            resolution=(100, 100),
+            like_count=42,
+        )
+
+        result = media.to_dict()
+        restored = PinterestMedia.from_dict(result)
+
+        assert result["like_count"] == 42
+        assert restored.like_count == 42
 
     def test_to_dict_with_video(self, sample_media_with_video):
         """Test converting media with video to dict."""

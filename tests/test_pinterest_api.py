@@ -11,6 +11,7 @@ from pinterest_dl.exceptions import (
     InvalidPinterestUrlError,
     InvalidSearchUrlError,
 )
+from pinterest_dl.parsers.response import ResponseParser
 from pinterest_dl.scrapers.api_scraper import ApiScraper
 
 
@@ -152,6 +153,30 @@ class TestPinterestAPIUrlParsing:
         api2 = Api("https://de.pinterest.com/user/board/section/")
         assert api2.is_section is True
         assert api2.section_slug == "section"
+
+
+class TestResponseParser:
+    def test_from_responses_parses_like_count(self):
+        items = ResponseParser.from_responses(
+            [
+                {
+                    "id": "123",
+                    "images": {
+                        "orig": {
+                            "url": "https://i.pinimg.com/originals/test.jpg",
+                            "width": 1200,
+                            "height": 1800,
+                        }
+                    },
+                    "auto_alt_text": "caption",
+                    "reaction_counts": {"1": 77},
+                }
+            ],
+            min_resolution=(0, 0),
+        )
+
+        assert len(items) == 1
+        assert items[0].like_count == 77
 
 
 class TestScrapePinFallbacks:

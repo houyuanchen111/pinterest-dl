@@ -80,6 +80,7 @@ class ResponseParser:
 
             # Parse video stream if available
             video_stream = cls._parse_video_stream(item)
+            like_count = cls._parse_like_count(item)
 
             media_items.append(
                 PinterestMedia(
@@ -89,10 +90,28 @@ class ResponseParser:
                     origin=origin,
                     resolution=(width, height),
                     video_stream=video_stream,
+                    like_count=like_count,
                 )
             )
 
         return media_items
+
+    @staticmethod
+    def _parse_like_count(item: Dict[str, Any]) -> Optional[int]:
+        reaction_counts = item.get("reaction_counts")
+        if not isinstance(reaction_counts, dict):
+            return None
+
+        for key in ("1", 1, "like", "likes"):
+            value = reaction_counts.get(key)
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, int):
+                return value
+            if isinstance(value, str) and value.isdigit():
+                return int(value)
+
+        return None
 
     @classmethod
     def _parse_video_stream(cls, item: Dict[str, Any]) -> Optional[VideoStreamInfo]:

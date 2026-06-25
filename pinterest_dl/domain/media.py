@@ -40,6 +40,7 @@ class PinterestMedia:
         origin: Optional[str],
         resolution: Tuple[int, int],
         video_stream: Optional[VideoStreamInfo] = None,
+        like_count: Optional[int] = None,
     ) -> None:
         """Initialize Pinterest media object.
 
@@ -50,6 +51,7 @@ class PinterestMedia:
             origin: Pinterest pin URL.
             resolution: Image resolution as (width, height).
             video_stream: Optional video stream information if available.
+            like_count: Optional Pinterest reaction/like count.
         """
         self.id = id
         self.src = src
@@ -57,6 +59,7 @@ class PinterestMedia:
         self.origin = origin
         self.resolution = resolution
         self.video_stream = video_stream
+        self.like_count = like_count
         self.local_path: Optional[Path] = None
 
     def set_local_path(self, path: str | Path) -> None:
@@ -85,6 +88,7 @@ class PinterestMedia:
                 "x": self.resolution[0] if has_valid_resolution else None,
                 "y": self.resolution[1] if has_valid_resolution else None,
             },
+            "like_count": self.like_count,
         }
         if self.video_stream:
             data["media_stream"] = {
@@ -127,6 +131,7 @@ class PinterestMedia:
             if "resolution" in data
             else (0, 0),
             video_stream=video_stream,
+            like_count=data.get("like_count"),
         )
 
     def __str__(self) -> str:
@@ -137,6 +142,7 @@ class PinterestMedia:
             f"alt: {self.alt}, "
             f"origin: {self.origin}, "
             f"resolution: {self.resolution}, "
+            f"like_count: {self.like_count}, "
             f"video_stream: {self.video_stream}"
             f")"
         )
