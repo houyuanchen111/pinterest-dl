@@ -12,6 +12,7 @@ import argparse
 import itertools
 import json
 import re
+import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -111,6 +112,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional Pinterest cookies JSON file.",
     )
     parser.add_argument(
+        "--ipv4",
+        action="store_true",
+        help="Force requests/urllib3 network connections to use IPv4.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Show detailed logs from pinterest-dl.",
@@ -150,6 +156,13 @@ def resolve_source(raw_input: str, mode: str) -> tuple[str, str, str]:
 
 def pin_url(pin_uid: str) -> str:
     return f"https://www.pinterest.com/pin/{pin_uid}/"
+
+
+def force_urllib3_ipv4() -> None:
+    """Restrict urllib3 address selection to IPv4 for this process."""
+    import urllib3.util.connection
+
+    urllib3.util.connection.allowed_gai_family = lambda: socket.AF_INET
 
 
 def load_records(json_path: Path) -> list[dict[str, Any]]:
@@ -344,6 +357,10 @@ def iter_scraped_items(
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.ipv4:
+        force_urllib3_ipv4()
+        print("Network address family: IPv4 only", flush=True)
 
     if args.num < 1:
         parser.error("--num must be greater than 0")
