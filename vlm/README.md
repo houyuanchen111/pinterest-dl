@@ -1,55 +1,73 @@
-# 单图天空/海面/光影/写实风格筛选器
+# 统一单图 VLM 筛选接口
 
-输入一张 PNG、JPG 或 JPEG 图片，调用 VLM 独立判断：
+`src/classify_image.py` 是统一的单图分类入口。业务筛选规则不再写死在 Python 中，而是通过 `prompts/` 下不同的 prompt profile 控制。
 
-1. 图片是否同时清楚出现天空和海面；
-2. 图片是否具有**极其明显**的戏剧化光影效果；
-3. 图片是否属于真实摄影/高度写实风格。
-
-只有三项都通过时，输出中的 `all_pass` 才会是 `true`。
-
-## 使用方法
+## 查看可用任务
 
 ```bash
 cd /mnt/aigc/houyuanchen/pinterest-dl/vlm
-./sh/classify_image.sh /path/to/image.jpg
+python3 src/classify_image.py --list-prompts
 ```
 
-保存结果到 JSON 文件：
+## 使用指定 prompt
 
 ```bash
-./sh/classify_image.sh /path/to/image.png --output output/result.json
+python3 src/classify_image.py \
+  /path/to/image.jpg \
+  --prompt sky_sea_extreme_light_photorealistic
 ```
 
-也可以直接运行 Python：
+Shell 入口的参数完全相同：
 
 ```bash
-python3 src/classify_image.py /path/to/image.jpg
+./sh/classify_image.sh \
+  /path/to/image.png \
+  --prompt sky_sea_extreme_light_photorealistic \
+  --output output/result.json
 ```
 
-## 输出示例
+`--prompt` 支持三种形式：
+
+1. `prompts/` 下的 profile 名称；
+2. profile JSON 文件路径；
+3. 原始 Markdown prompt 路径。原始 Markdown 模式只校验模型返回的是 JSON 对象。
+
+## 输出
+
+接口统一添加以下元数据：
 
 ```json
 {
   "image": "/absolute/path/to/image.jpg",
   "model": "qwen3.5-plus",
-  "has_sky_and_sea": true,
-  "extreme_light_shadow": false,
-  "photorealistic": true,
-  "all_pass": false,
-  "reasons": {
-    "sky_and_sea": "画面上方可见天空，下方可见连续海面。",
-    "light_shadow": "整体为普通自然光，没有极强明暗反差或戏剧化投影。",
-    "photorealistic": "画面具有自然的摄影纹理、透视和材质细节。"
-  }
+  "prompt": "sky_sea_extreme_light_photorealistic"
 }
 ```
 
-## 配置
+随后合并所选 prompt 任务定义的结果字段。现有天空/海面任务仍保持原有的 `has_sky_and_sea`、`extreme_light_shadow`、`photorealistic`、`all_pass` 和 `reasons` 字段。
 
-- 默认 API 配置：`api/qwen_3_5_plus.json`
-- 默认提示词：`prompt/image_scene_classifier_zh.md`
-- 可通过环境变量 `VLM_API_KEY` 覆盖配置文件中的 API Key。
-- 可用 `--api-config`、`--system-prompt`、`--timeout` 和 `--retries` 覆盖默认参数。
+## 新增筛选任务
 
-光影判定由 VLM 根据视觉理解自主完成，但采用极其严格的标准；只有模型非常确定光影效果“极其明显”时才会判为 `true`。
+每个任务使用两个文件：
+
+```text
+prompts/
+├── my_task.json
+└── my_task.zh.md
+```
+
+1. 在 Markdown 中定义视觉筛选标准和 JSON 输出格式。
+2. 在 JSON profile 中声明提示词文件、用户指令和结果校验规则。
+3. 运行时传入 `--prompt my_task`。
+
+完整格式参见 `prompts/README.md` 和 `prompts/templates/single_condition.*`。
+
+## 其他参数
+
+- `--user-prompt`：临时覆盖 profile 中的用户指令。
+- `--system-prompt`：兼容旧调用，直接加载原始 Markdown prompt。
+- `--api-config`：指定 API 配置文件。
+- `--timeout`：请求超时秒数。
+- `--retries`：模型返回无效结果时的最大尝试次数。
+- `--output`：额外保存 JSON 结果。
+- 环境变量 `VLM_API_KEY`：覆盖 API 配置中的 Key。
