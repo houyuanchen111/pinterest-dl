@@ -52,4 +52,4 @@ python3 src/classify_image.py /path/to/image.jpg
 - 可通过环境变量 `VLM_API_KEY` 覆盖配置文件中的 API Key。
 - 可用 `--api-config`、`--system-prompt`、`--timeout` 和 `--retries` 覆盖默认参数。
 
-光影判定采用默认否决策略：普通日照、日落色彩、柔光、轻微阴影或一般水面反光都会判为 `false`；只有强烈且主导画面的明暗、方向光、投影、高光或光束才可能通过。
+光影判定由 VLM 根据视觉理解自主完成，但采用极其严格的标准；只有模型非常确定光影效果“极其明显”时才会判为 `true`。
