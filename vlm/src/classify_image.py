@@ -22,7 +22,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 VLM_DIR = SCRIPT_DIR.parent
 DEFAULT_API_CONFIG = VLM_DIR / "api" / "qwen_3_5_plus.json"
 PROMPTS_DIR = VLM_DIR / "prompts"
-DEFAULT_PROMPT = "sky_sea_extreme_light_photorealistic"
+DEFAULT_PROMPT = "sky_sea"
 DEFAULT_USER_PROMPT = "请严格检查这张图片，并只按系统要求返回一个 JSON 对象。"
 SUPPORTED_SUFFIXES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
 

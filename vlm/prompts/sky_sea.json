@@ -1,0 +1,24 @@
+{
+  "id": "sky_sea",
+  "description": "筛选同时包含天空和海面、光影极强且为写实风格的图片。",
+  "system_prompt_file": "sky_sea.md",
+  "user_prompt": "请严格检查这张图片，并只按系统要求返回一个 JSON 对象。",
+  "validation": {
+    "required_boolean_fields": [
+      "has_sky_and_sea",
+      "extreme_light_shadow",
+      "photorealistic"
+    ],
+    "required_nonempty_string_fields": [
+      "reasons.sky_and_sea",
+      "reasons.light_shadow",
+      "reasons.photorealistic"
+    ],
+    "pass_field": "all_pass",
+    "pass_from": [
+      "has_sky_and_sea",
+      "extreme_light_shadow",
+      "photorealistic"
+    ]
+  }
+}

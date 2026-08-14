@@ -14,7 +14,7 @@ python3 src/classify_image.py --list-prompts
 ```bash
 python3 src/classify_image.py \
   /path/to/image.jpg \
-  --prompt sky_sea_extreme_light_photorealistic
+  --prompt sky_sea
 ```
 
 Shell 入口的参数完全相同：
@@ -22,7 +22,7 @@ Shell 入口的参数完全相同：
 ```bash
 ./sh/classify_image.sh \
   /path/to/image.png \
-  --prompt sky_sea_extreme_light_photorealistic \
+  --prompt sky_sea \
   --output output/result.json
 ```
 
@@ -40,7 +40,7 @@ Shell 入口的参数完全相同：
 {
   "image": "/absolute/path/to/image.jpg",
   "model": "qwen3.5-plus",
-  "prompt": "sky_sea_extreme_light_photorealistic"
+  "prompt": "sky_sea"
 }
 ```
 

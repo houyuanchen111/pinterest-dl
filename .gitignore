@@ -16,6 +16,7 @@ cookies.json
 test_output/
 .examples/
 *.json
+!vlm/prompts/sky_sea.json
 *.jsonl
 test.py
 tmp/
