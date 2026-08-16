@@ -17,6 +17,7 @@ test_output/
 .examples/
 *.json
 !vlm/prompts/sky_sea.json
+!vlm/prompts/ocean_shimmer.json
 *.jsonl
 test.py
 tmp/

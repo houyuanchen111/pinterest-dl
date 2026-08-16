@@ -1,0 +1,27 @@
+{
+  "id": "ocean_shimmer",
+  "description": "筛选以海面或自然水面为绝对主体、具有极其强烈且主导画面的波光与光影、真实且富有美感的图片。",
+  "system_prompt_file": "ocean_shimmer.md",
+  "user_prompt": "请严格检查这张图片，并只按系统要求返回一个 JSON 对象。",
+  "validation": {
+    "required_boolean_fields": [
+      "water_surface_dominant",
+      "obvious_water_light",
+      "photorealistic",
+      "aesthetically_pleasing"
+    ],
+    "required_nonempty_string_fields": [
+      "reasons.water_surface",
+      "reasons.water_light",
+      "reasons.photorealistic",
+      "reasons.aesthetics"
+    ],
+    "pass_field": "all_pass",
+    "pass_from": [
+      "water_surface_dominant",
+      "obvious_water_light",
+      "photorealistic",
+      "aesthetically_pleasing"
+    ]
+  }
+}
