@@ -18,6 +18,7 @@ test_output/
 *.json
 !vlm/prompts/sky_sea.json
 !vlm/prompts/ocean_shimmer.json
+!vlm/prompts/backlit_floral_portrait.json
 *.jsonl
 test.py
 tmp/

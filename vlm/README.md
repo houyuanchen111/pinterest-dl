@@ -26,6 +26,29 @@ Shell 入口的参数完全相同：
   --output output/result.json
 ```
 
+## 批量筛选目录
+
+`src/filter_directory.py` 可以并发筛选整个目录、断点续跑、生成按相似度排序的
+`summary.jsonl`，并把通过图片复制到单独目录。
+
+筛选暖色逆光花草女性人像：
+
+```bash
+python3 src/filter_directory.py \
+  /path/to/images \
+  --prompt backlit_floral_portrait \
+  --output-dir output/backlit_floral_portrait \
+  --workers 16 \
+  --min-score 75 \
+  --copy-passed
+```
+
+- 单图结果：`output/backlit_floral_portrait/results/`
+- 排序汇总：`output/backlit_floral_portrait/summary.jsonl`
+- 通过图片：`output/backlit_floral_portrait/passed/`
+- 失败记录：`output/backlit_floral_portrait/errors.jsonl`
+- 修改 prompt 后缓存会自动失效；使用 `--refresh` 可强制全部重跑。
+
 `--prompt` 支持三种形式：
 
 1. `prompts/` 下的 profile 名称；

@@ -1,0 +1,33 @@
+{
+  "id": "backlit_floral_portrait",
+  "description": "筛选与参考图相近的暖色逆光花草人像：单人女性、户外植物环境、发丝轮廓光、浅景深前景散景和梦幻真实摄影质感。",
+  "system_prompt_file": "backlit_floral_portrait.zh.md",
+  "user_prompt": "请判断这张图片与暖色逆光花草女性人像参考风格的接近程度，并只按系统要求返回一个 JSON 对象。",
+  "validation": {
+    "required_boolean_fields": [
+      "female_portrait",
+      "outdoor_floral_greenery",
+      "warm_backlight_or_rim_light",
+      "shallow_depth_and_bokeh",
+      "dreamy_photorealistic_aesthetic",
+      "clean_image_without_text_or_watermark"
+    ],
+    "required_nonempty_string_fields": [
+      "reasons.subject",
+      "reasons.environment",
+      "reasons.lighting",
+      "reasons.depth",
+      "reasons.aesthetic",
+      "reasons.cleanliness"
+    ],
+    "pass_field": "all_pass",
+    "pass_from": [
+      "female_portrait",
+      "outdoor_floral_greenery",
+      "warm_backlight_or_rim_light",
+      "shallow_depth_and_bokeh",
+      "dreamy_photorealistic_aesthetic",
+      "clean_image_without_text_or_watermark"
+    ]
+  }
+}
