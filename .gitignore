@@ -33,3 +33,5 @@ light_repo
 
 # GPT Image runtime outputs
 img_gen/output/
+vlm/data/0508_results
+vlm/data/rim_light
