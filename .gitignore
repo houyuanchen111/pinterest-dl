@@ -30,3 +30,6 @@ pasted_103_uid_images
 
 tmp
 light_repo
+
+# GPT Image runtime outputs
+img_gen/output/
