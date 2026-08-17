@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
+import io
 import json
 import shutil
 import sys
@@ -28,6 +30,7 @@ from classify_image import (
 SCRIPT_DIR = Path(__file__).resolve().parent
 VLM_DIR = SCRIPT_DIR.parent
 DEFAULT_API_CONFIG = VLM_DIR / "api" / "qwen_3_5_plus.json"
+MAX_DIRECT_IMAGE_BYTES = 9_500_000
 
 
 def parse_args() -> argparse.Namespace:
@@ -129,6 +132,30 @@ def classifier_signature(api: Any, profile: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def api_image_data_url(image_path: Path) -> str:
+    media_type = validate_image(image_path)
+    if image_path.stat().st_size < MAX_DIRECT_IMAGE_BYTES:
+        return image_data_url(image_path, media_type)
+
+    from PIL import Image
+
+    with Image.open(image_path) as image:
+        image.seek(0)
+        image.thumbnail((4096, 4096), Image.Resampling.LANCZOS)
+        if image.mode in {"RGBA", "LA"}:
+            background = Image.new("RGB", image.size, "white")
+            background.paste(image, mask=image.getchannel("A"))
+            image = background
+        else:
+            image = image.convert("RGB")
+
+        buffer = io.BytesIO()
+        image.save(buffer, "JPEG", quality=90, optimize=True)
+
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return f"data:image/jpeg;base64,{encoded}"
+
+
 def write_json_atomic(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_suffix(path.suffix + ".tmp")
@@ -156,11 +183,10 @@ def classify_one(
         if cached is not None and cached.get("classifier_signature") == signature:
             return cached, True
 
-    media_type = validate_image(image_path)
     result = classify_with_retries(
         api=api,
         profile=profile,
-        image_url=image_data_url(image_path, media_type),
+        image_url=api_image_data_url(image_path),
         user_prompt=profile.user_prompt,
         timeout=timeout,
         retries=retries,
