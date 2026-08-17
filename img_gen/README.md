@@ -35,6 +35,8 @@ python -m pip install -r img_gen/requirements.txt
 
 可用 `OPENAI_IMAGE_MODEL` 覆盖默认模型；未设置时使用 `gpt-image-2`。
 
+图片默认以 JPEG 格式输出，文件扩展名为 `.jpg`。如需其他格式，可显式传入 `--format png` 或 `--format webp`；JPEG/WebP 可配合 `--compression 0-100` 使用。
+
 ## 生成
 
 先检查最终请求，不调用 API：
@@ -100,3 +102,51 @@ python img_gen/src/main.py \
 - 成功时 stdout 只输出 JSON 结果，便于被 shell、队列或上层程序调用。
 - 失败时错误写入 stderr，并以非零状态退出。
 - 每次请求都会保存一个同名前缀的 `.json` 元数据文件，记录模型、参数、完整合并 prompt、输入路径和输出路径。
+
+## 批量生成墙面光影
+
+`src/batch_generate.py` 默认扫描 `prompt/user/[0-9][0-9]_*.md`，即当前编号 `01` 至 `20` 的墙面光影 prompts。每个 prompt 会单独调用一次原子脚本，并在一次请求中返回两张图片。
+
+先验证全部 20 个请求，不调用 API：
+
+```bash
+python img_gen/src/batch_generate.py --dry-run
+```
+
+正式生成 40 张横图：
+
+```bash
+python img_gen/src/batch_generate.py
+```
+
+默认使用 `1536x1024`、`medium`、JPEG。输出结构如下：
+
+```text
+img_gen/output/wall_projection_batch_<UTC timestamp>/
+├── 01_warm_classic_window_grid/
+│   ├── 01_warm_classic_window_grid_<timestamp>_01.jpg
+│   ├── 01_warm_classic_window_grid_<timestamp>_02.jpg
+│   └── 01_warm_classic_window_grid_<timestamp>_01.json
+├── ...
+└── batch_manifest.json
+```
+
+指定固定输出目录后，重复运行会跳过已有至少两张图片的 prompt：
+
+```bash
+python img_gen/src/batch_generate.py \
+  --output-dir /path/to/wall_projection_batch
+```
+
+常用调试参数：
+
+```bash
+# 只跑前两个 prompt
+python img_gen/src/batch_generate.py --limit 2
+
+# 某个 prompt 失败后继续
+python img_gen/src/batch_generate.py --continue-on-error
+
+# 忽略已有结果并重新生成
+python img_gen/src/batch_generate.py --output-dir /path/to/batch --force
+```

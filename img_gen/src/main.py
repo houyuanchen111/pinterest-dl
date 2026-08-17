@@ -90,7 +90,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--format",
         dest="output_format",
         choices=("png", "jpeg", "webp"),
-        default="png",
+        default="jpeg",
+        help="Output image format (default: jpeg).",
     )
     parser.add_argument(
         "--compression",
